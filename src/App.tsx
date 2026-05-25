@@ -74,77 +74,106 @@ export default function App() {
     setIsSessionsOpen(false);
   };
 
-  const handleAudioReady = async (base64Data: string, mimeType: string) => {
+ const handleAudioReady = async (base64Data: string, mimeType: string) => {
+  try {
+    setIsProcessing(true);
+    setError(null);
+    setOriginalAudioData({ base64: base64Data, mimeType });
+
+    // Simulate backend ML Pipeline
+    setPipelineStage("Running Audio Preprocessing (Epic 4)...");
+    await fetch("/api/ml/pipeline/audio-preprocess", {
+      method: "POST",
+    });
+
+    setPipelineStage("Running Speech-to-Text & Lang Detection (Epic 5)...");
+    await fetch("/api/ml/pipeline/asr-transcribe", {
+      method: "POST",
+    });
+
+    setPipelineStage("Running Emotion & Sentiment Analysis (Epic 7)...");
+    await fetch("/api/ml/pipeline/sentiment-topic", {
+      method: "POST",
+    });
+
+    setPipelineStage(
+      "Generating Key Insights & Translation (RAG - Epic 10)..."
+    );
+
+    const analysis = await processAudio(
+      base64Data,
+      mimeType,
+      targetLanguage,
+      processingMode
+    );
+
+    setResult(analysis);
+
     try {
-      setIsProcessing(true);
-      setError(null);
-      setOriginalAudioData({ base64: base64Data, mimeType });
-      
-      // Simulate backend ML Pipeline
-      setPipelineStage("Running Audio Preprocessing (Epic 4)...");
-      await fetch("/api/ml/pipeline/audio-preprocess", { method: "POST" });
-      
-      setPipelineStage("Running Speech-to-Text & Lang Detection (Epic 5)...");
-      await fetch("/api/ml/pipeline/asr-transcribe", { method: "POST" });
-      
-      setPipelineStage("Running Emotion & Sentiment Analysis (Epic 7)...");
-      await fetch("/api/ml/pipeline/sentiment-topic", { method: "POST" });
-      
-      setPipelineStage("Generating Key Insights & Translation (RAG - Epic 10)...");
-      const analysis = await processAudio(base64Data, mimeType, targetLanguage, processingMode);
-      setResult(analysis);
-      
-      try {
-        setPipelineStage("Storing Vectors to Database (Epic 9)...");
-        await fetch("/api/ml/pipeline/vectorize", { method: "POST" });
-        
-        // Generate Embeddings for RAG
-        const segments = analysis.transcriptSegments || [];
-        const textsToEmbed = segments.map(s => s.text);
-        
-        let documents: RAGDocument[] = [];
-        if (textsToEmbed.length > 0) {
-          const embeddings = await generateEmbeddings(textsToEmbed);
-          documents = segments.map((s, idx) => ({
-            id: crypto.randomUUID(),
-            text: s.speaker ? `${s.speaker}: ${s.text}` : s.text,
-            embedding: embeddings[idx],
-            metadata: {
-              startTime: s.startTime,
-              endTime: s.endTime,
-            }
-          }));
-        }
+      setPipelineStage("Storing Vectors to Database (Epic 9)...");
 
-        setCurrentDocuments(documents);
+      await fetch("/api/ml/pipeline/vectorize", {
+        method: "POST",
+      });
 
-        // Save session
-        const session: Session = {
+      // Generate Embeddings for RAG
+      const segments = analysis.transcriptSegments || [];
+
+      const textsToEmbed = segments.map((s) => s.text);
+
+      let documents: RAGDocument[] = [];
+
+      if (textsToEmbed.length > 0) {
+        const embeddings = await generateEmbeddings(textsToEmbed);
+
+        documents = segments.map((s, idx) => ({
           id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          title: `Session ${new Date().toLocaleTimeString()}`,
-          mode: processingMode,
-          audioData: { base64: base64Data, mimeType },
-          result: analysis,
-          documents
-        };
-        
-        await saveSessionToDB(session);
-        await loadSessions();
-
-      } catch (dbErr) {
-        console.error("Failed to save session or generate embeddings", dbErr);
+          text: s.speaker
+            ? `${s.speaker}: ${s.text}`
+            : s.text,
+          embedding: embeddings[idx],
+          metadata: {
+            start: s.start,
+            end: s.end,
+          },
+        }));
       }
 
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Failed to process audio.");
-    } finally {
-      setIsProcessing(false);
-      setPipelineStage(null);
-    }
-  };
+      setCurrentDocuments(documents);
 
+      // Save session
+      const session: Session = {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        title: `Session ${new Date().toLocaleTimeString()}`,
+        mode: processingMode,
+        audioData: {
+          base64: base64Data,
+          mimeType,
+        },
+        result: analysis,
+        documents,
+      };
+
+      await saveSessionToDB(session);
+      await loadSessions();
+
+    } catch (dbErr) {
+      console.error(
+        "Failed to save session or generate embeddings",
+        dbErr
+      );
+    }
+
+  } catch (err: any) {
+    console.error(err);
+    setError(err?.message || "Failed to process audio.");
+
+  } finally {
+    setIsProcessing(false);
+    setPipelineStage(null);
+  }
+};
   return (
     <div className="min-h-screen bg-transparent selection:bg-sky-500 selection:text-white font-sans flex flex-col pt-6 px-6 overflow-x-hidden text-[#e0e0e6]">
       <ScrollProgress />

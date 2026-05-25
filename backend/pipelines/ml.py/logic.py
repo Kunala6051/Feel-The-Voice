@@ -21,8 +21,6 @@ genai.configure(
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 
-# ---------------- STEP 1: TOKENIZER ----------------
-
 def tokenize_and_chunk(transcript, chunk_size=3):
 
     sentences = sent_tokenize(transcript)
@@ -40,8 +38,6 @@ def tokenize_and_chunk(transcript, chunk_size=3):
 
     return chunks
 
-
-# ---------------- STEP 2: EMBEDDINGS ----------------
 
 def create_embeddings(chunks):
 
